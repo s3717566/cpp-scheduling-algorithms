@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <array>
 
 void readFile();
 
@@ -12,31 +13,38 @@ void fcfs();
 
 void sjf();
 
+void roundrobin();
+
 void printStats();
 
-int process[200];
-int burstTime[200];
-int arrivalTime[200];
+std::array<int, 200> process;
+std::array<int, 200> burstTime;
+std::array<int, 200> arrivalTime;
 
-int turnAroundTime[200];
-int waitingTime[200];
-int completionTime[200];
-int serviceTime[200];
+std::array<int, 200> turnAroundTime;
+std::array<int, 200> waitingTime;
+std::array<int, 200> completionTime;
+std::array<int, 200> serviceTime;
+
+bool debug = true;
 
 //Arrival Time: Time at which the process arrives in the ready queue.
 //Completion Time: Time at which process completes its execution.
 //Burst Time: Time required by a process for CPU execution.
 //Turn Around Time: Time Difference between completion time and arrival time.
 //Turn Around Time = Completion Time – Arrival Time
-//
+
 //Waiting Time(W.T): Time Difference between turn around time and burst time.
 //Waiting Time = Turn Around Time – Burst Time
 
-int main() {
+int main(int argc, char *argv[]) {
     std::cout << "Hello, World!" << std::endl;
     readFile();
-//    fcfs();
-    sjf();
+
+    if (std::string(argv[1]) == "fcfs") fcfs();
+    else if (std::string(argv[1]) == "sjf") sjf();
+    else if (std::string(argv[1]) == "roundrobin") roundrobin();
+
     printStats();
     return 0;
 }
@@ -54,66 +62,103 @@ void fcfs() {
     for (; currentProcess < 201; currentProcess++) {
         serviceTime[currentProcess] = serviceTime[currentProcess - 1] + burstTime[currentProcess - 1];
         waitingTime[currentProcess] = serviceTime[currentProcess] - arrivalTime[currentProcess];
+        completionTime[currentProcess] = serviceTime[currentProcess] + burstTime[currentProcess];
+        turnAroundTime[currentProcess] = completionTime[currentProcess] - arrivalTime[currentProcess];
         //if the processor has been idle before the next process arrived then there is no wait time
         if (waitingTime[currentProcess] < 0) waitingTime[currentProcess] = 0;
     }
 }
 
 void sjf() {
-    int currentProcess = 1;
     std::vector<int> waitingList;
 
-//    serviceTime[currentProcess] = arrivalTime[currentProcess];
-//    waitingTime[currentProcess] = 0;
-//    currentProcess++;
-
+    int currentProcessIndex = 0;
     int currentCompletionTime = 0;
-    int currentShortest = 0;
+    int currentShortestIndex = 0;
     int currentShortestTime = 0;
     int time = 0;
+    bool first = true;
+    bool last = false;
 
-//    for (int time = 0; time < 3000; time++) {
     while (true) {
-        //add the process to the waiting list when it has arrived, where the shortest will be taken
-        if (time >= arrivalTime[currentProcess] && currentProcess <= 200) {
-            //std::cout << "process: " << currentProcess << " arrived";
-            waitingList.push_back(currentProcess);
-            currentProcess++;
+        //add the process to the waiting list when it has arrived, where the shortest will be taken.
+        //separated to avoid out of bounds array error
+        if (currentProcessIndex <= 199) {
+            if (time >= arrivalTime[currentProcessIndex]) {
+                if (debug) std::cout << "added process: " << process[currentProcessIndex] << " to waiting list";
+                waitingList.push_back(currentProcessIndex);
+                currentProcessIndex++;
+            }
         }
 
         //when CPU is idle, grab the process with the shortest burst time amongst all the processes which have arrived
         if (time >= currentCompletionTime) {
-            //if there are no more
-            if (waitingList.empty() && currentProcess == 201)
+
+            //record the statistics of the process that just finished, if not the first
+            if (!first) {
+                completionTime[currentShortestIndex] = time;
+                turnAroundTime[currentShortestIndex] =
+                        completionTime[currentShortestIndex] - arrivalTime[currentShortestIndex];
+
+                if (debug)
+                    std::cout << "process finished: " << process[currentShortestIndex]
+                              << "\tarrived: " << arrivalTime[currentShortestIndex]
+                              << "\tcompletionTime: " << completionTime[currentShortestIndex]
+                              << "\tturnAround: " << turnAroundTime[currentShortestIndex] << "\n";
+            }
+            first = false;
+
+            //break out of the loop when all processes have been added
+            if (waitingList.empty() && last == true)
                 break;
-            //now that the previous process is complete, save the statistics for that
+
             //find the process with the shortest burst time in the waiting list
-            for (std::vector<int>::iterator it = waitingList.begin(); it != waitingList.end(); ++it) {
-                if (burstTime[*it] < currentShortestTime || currentShortest == 0 || currentShortestTime == 0) {
-                    currentShortest = *it;
-                    currentShortestTime = burstTime[*it];
+            for (std::vector<int>::iterator processIt = waitingList.begin();
+                 processIt != waitingList.end(); ++processIt) {
+                if (burstTime[*processIt] < currentShortestTime || currentShortestIndex == 0 ||
+                    currentShortestTime == 0) {
+                    currentShortestIndex = *processIt;
+                    currentShortestTime = burstTime[*processIt];
                 }
             }
-            serviceTime[currentShortest] = time;
-            waitingTime[currentShortest] = serviceTime[currentShortest] - arrivalTime[currentShortest];
-            std::cout << "process: " << currentShortest << "\tarrived: " << arrivalTime[currentShortest] << "\tservice: " << serviceTime[currentShortest] << "\twaited: " << waitingTime[currentShortest] << "\n";
 
-            //if the processor has been idle before the next process arrived then there is no wait time
-//            if (waitingTime[currentShortest] < 0) waitingTime[currentShortest] = 0;
+            //record service waiting and completion time for the newly begun process
+            serviceTime[currentShortestIndex] = time;
+            waitingTime[currentShortestIndex] = serviceTime[currentShortestIndex] - arrivalTime[currentShortestIndex];
 
-            currentCompletionTime = time + burstTime[currentShortest];
+            if (debug)
+                std::cout << "process started: " << process[currentShortestIndex]
+                          << "\tarrived: " << arrivalTime[currentShortestIndex]
+                          << "\tservice: " << serviceTime[currentShortestIndex]
+                          << "\twaited: " << waitingTime[currentShortestIndex]
+                          << "\tburst: " << burstTime[currentShortestIndex]
+                          << "\n";
+
+            //record the time when the newly begun process will be complete and the CPU will be able again
+            currentCompletionTime = time + burstTime[currentShortestIndex];
+
             //remove that process from the waiting list
-            waitingList.erase(std::remove(waitingList.begin(), waitingList.end(), currentShortest), waitingList.end());
+            waitingList.erase(std::remove(waitingList.begin(), waitingList.end(), currentShortestIndex),
+                              waitingList.end());
             currentShortestTime = 0;
+
+            //if the last index has been reached, prepare the exit the loop when the waitingList is empty.
+            if (currentProcessIndex == 199) last = true;
         }
 
-        //get the current service time by adding the current service time to the burst time
-        //on arrival of a new process, add it to the list
-        //when the current time is past the service time, meaning that the last process is complete, scan through the list and take the process with the lowest burst time
-        std::cout << "Time: " << time << "\tCurrent process: " << currentShortest << "\tArrival Time: " << arrivalTime[currentShortest] << "\tBurst Time: " << burstTime[currentShortest] << "Current Completion Time: " << currentCompletionTime << "\n";
+        if (debug)
+            std::cout << "__Time: " << time << "\tCurrent process: " << process[currentShortestIndex]
+                      << "\tArrival Time: " << arrivalTime[currentShortestIndex] << "\tBurst Time: "
+                      << burstTime[currentShortestIndex] << "Current Completion Time: " << currentCompletionTime
+                      << "\n";
         time++;
     }
 }
+
+void roundrobin() {
+    //
+}
+
 
 void readFile() {
     std::string filename = "processes-3";
@@ -142,6 +187,6 @@ void printStats() {
         std::cout << "process: " << process[i] << "\twait time: " << waitingTime[i] << "\n";
         waitingTimeTotal += waitingTime[i];
     }
-    float avgWait = (waitingTimeTotal / 200);
+    float avgWait = 1.0 * waitingTimeTotal / 200;
     std::cout << "average waiting time: " << avgWait;
 }
