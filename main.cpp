@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <array>
+#include <deque>
 
 void readFile();
 
@@ -38,13 +39,10 @@ bool debug = true;
 //Waiting Time = Turn Around Time – Burst Time
 
 int main(int argc, char *argv[]) {
-    std::cout << "Hello, World!" << std::endl;
     readFile();
-
     if (std::string(argv[1]) == "fcfs") fcfs();
     else if (std::string(argv[1]) == "sjf") sjf();
-    else if (std::string(argv[1]) == "roundrobin") roundrobin();
-
+    else if (std::string(argv[1]) == "rr") roundrobin();
     printStats();
     return 0;
 }
@@ -156,7 +154,73 @@ void sjf() {
 }
 
 void roundrobin() {
-    //
+    //on context switch, reset mini-timer to quantum time (2)
+    //count down mini-timer
+    //hold a map of process indices to burst time
+    //after every turn, remove the value of the burst time of the current process
+    //at every switch, keep track on the switch time and total it
+    std::deque<int> waitingQueue;
+    std::array<int, 200> burstTimeLeft;
+
+    int arrivalIndex = 0;
+    int currentProcessIndex = 0;
+    int time = 0;
+    float switchTime = 0;
+    int currentQuantum = 0; //counts down from 2 to 0 then resets
+    bool first = true;
+    bool last = false;
+
+
+    while (true) {
+        //add the process to the waiting queue.
+        //separated to avoid out of bounds array error
+        if (arrivalIndex <= 199) {
+            if (time >= arrivalTime[arrivalIndex]) {
+//                if (debug) std::cout << "added process: " << process[arrivalIndex] << " to waiting list\n";
+                waitingQueue.push_back(arrivalIndex);
+                burstTimeLeft[arrivalIndex] = burstTime[arrivalIndex];
+                arrivalIndex++;
+            }
+        }
+
+        if (currentQuantum == 0 || burstTimeLeft[currentProcessIndex] == 0) {
+            if (burstTimeLeft[currentProcessIndex] > 0) {//only put it back on the queue if it hasnt been fully processed
+                if (debug) std::cout << "\tput process: " << process[currentProcessIndex] << " back into the queue\n";
+                if (!first) waitingQueue.push_back(currentProcessIndex); //put the index back on the queue, excludes the first as there is no previous
+                first = false;
+            } else {
+                //the process has finished, record the stats and do not put it back in the queue
+                completionTime[currentProcessIndex] = time;
+                turnAroundTime[currentProcessIndex] = completionTime[currentProcessIndex] - arrivalTime[currentProcessIndex];
+                waitingTime[currentProcessIndex] = turnAroundTime[currentProcessIndex] - burstTime[currentProcessIndex];
+                if (debug) std::cout << "\tfinished process: " << process[currentProcessIndex] << "\n";
+            }
+            currentProcessIndex = waitingQueue.front(); //set index to front of queue
+            waitingQueue.pop_front(); //pop the front off
+            if (debug) std::cout << "\tstarted process: " << process[currentProcessIndex] << " with burst time left: " << burstTimeLeft[currentProcessIndex] << "\n";
+
+            //if its the first time that the process is processing, record the service time
+//            if (burstTimeLeft[currentProcessIndex] == burstTime[currentProcessIndex]) {
+//
+//            }
+            switchTime += 0.1;
+            currentQuantum = 2; //reset quantum time
+        } else {
+            if (debug) std::cout << "\n";
+        }
+
+        currentQuantum--;
+        burstTimeLeft[currentProcessIndex]--;
+
+        time++;
+        if (debug) std::cout << time << ": ";
+        //if the last process has arrived
+        if (last && waitingQueue.empty())
+                break;
+
+        if (arrivalIndex == 199) last = true;
+    }
+
 }
 
 
@@ -183,10 +247,15 @@ void printArrays() {
 
 void printStats() {
     int waitingTimeTotal = 0;
+    int turnAroundTimeTotal = 0;
     for (int i = 0; i < 200; i++) {
-        std::cout << "process: " << process[i] << "\twait time: " << waitingTime[i] << "\n";
+        std::cout << "process: " << process[i] << "\t\twait time: " << waitingTime[i]
+        << "\t\tturn around time: " << turnAroundTime[i] << "\n";
         waitingTimeTotal += waitingTime[i];
+        turnAroundTimeTotal += turnAroundTime[i];
     }
     float avgWait = 1.0 * waitingTimeTotal / 200;
-    std::cout << "average waiting time: " << avgWait;
+    float avgTurn = 1.0 * turnAroundTimeTotal / 200;
+    std::cout << "average waiting time: " << avgWait << "\n";
+    std::cout << "average turn around time: " << avgTurn;
 }
